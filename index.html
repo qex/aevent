@@ -1,0 +1,177 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+<meta name="renderer" content="webkit"><title>随机事件分布DEMO v0.1</title>
+<style type="text/css">
+*{font-size:16px}
+body{display:flex}
+p{margin:20px 0 2px 0}
+p span{font-size:12px;margin-left:10px;color:#888}
+textarea{font-size:14px}
+div{margin:0 15px}
+</style></head><body>
+    <div>
+        <p>重复事件池 <span>名称 持续最小分 持续最大分 间隔最小分 间隔最大分 延后最小分 延后最大分</span></p>
+        <textarea rows="10" cols="60" id="repeat">吃饭 5 10 60 90 0 0     # 注释以 # 开头，可以随便写也可以不写
+睡觉 10 20 90 120 0 0
+打豆豆 1 1 120 240 60 120 # 延后示例，从60-120分后才开始循环</textarea>
+        <p>一般事件池<span>名称 持续最小分 持续最大分 范围起分 范围终分 总长最小分 总长最大分</span></p>
+        <textarea rows="20" cols="60" id="normal">早安 5 15 30 40 5 15
+午安 5 15 200 210
+晚安 5 15 400 410
+读读书 30 60 0 480
+打打怪 10 40 0 480
+发发呆 5 20 0 480
+聊聊天 15 35 0 480
+抽抽卡 8 22 0 480 40 40
+氪氪金 3 5 0 480 15 20
+
+# 总长也可以用于控制出现次数
+# 瞎写着玩没怎么仔细测，有问题随时联系
+# 太过于复杂的设定可能卡死浏览器，注意保存标签页</textarea>
+        <p><button>来吧拜托了安排一下</button></p>
+    </div>
+    <div>
+        <p>执行日志</p><textarea rows="5" cols="60" id="log" readonly="readonly"></textarea>
+        <p>执行结果</p><textarea rows="25" cols="60" id="result" readonly="readonly"></textarea>
+    </div>
+</body>
+<script type="text/javascript">
+$ = (q) => document.querySelector(q);
+$("button").addEventListener("click", () => {
+    let r_raw = $("#repeat").value.replace(/^\s+|\s+$/g, "").split("\n");
+    let n_raw = $("#normal").value.replace(/^\s+|\s+$/g, "").split("\n");
+    let r = [], n = [], s = [], k = [], log = [], ret = [], out = [];
+    let x = 0, u = 0, d = 0;
+    let item, c_item, i, f;
+    let rdm = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
+    r1: for (item of r_raw) {
+        c_item = item.split("#");
+        if (/^\s*$/.test(c_item[0])) continue;
+        i = c_item[0].replace(/^\s+|\s+$/g, "").split(" ");
+        if (7 === i.length) {
+            for (u = 1; u < 7; ++u) if (/^\d+$/.test(i[u])) i[u] = parseInt(i[u]);
+            else {
+                log.push("[事件] " + i[0] + " 因参数错误已忽略");
+                continue r1
+            }
+            if (i[1] > i[2]) log.push("[事件] " + i[0] + " 持续时间长度无效")
+            else if (i[3] > i[4]) log.push("[事件] " + i[0] + " 间隔时间长度无效");
+            else if (i[5] > i[6]) log.push("[事件] " + i[0] + " 延后时间长度无效")
+            else if (i[2] > i[3]) log.push("[事件] " + i[0] + " 持续时长大于间隔")
+            else {
+                i[9] = r.length;
+                r.push(i)
+            }
+        } else log.push("[事件] " + i[0] + " 因格式错误已忽略")
+    }
+    if (r.length) log.push("[事件] 共 " + r.length + " 发重复事件有效");
+    else log.push("[事件] 无有效重复事件");
+    r2: for (item of n_raw) {
+        c_item = item.split("#");
+        if (/^\s*$/.test(c_item[0])) continue;
+        i = c_item[0].replace(/^\s+|\s+$/g, "").split(" ");
+        if (7 === i.length || 5 === i.length) {
+            for (u = 1; u < 7; ++u) if ("undefined" === typeof i[u]) i[u] = NaN;
+            else if (/^\d+$/.test(i[u])) i[u] = parseInt(i[u]);
+            else {
+                log.push("[事件] " + i[0] + " 因参数错误已忽略");
+                continue r2
+            }
+            if (i[1] > i[2] || i[1] < 1) log.push("[事件] " + i[0] + " 持续时间长度无效");
+            else if (i[3] > i[4]) log.push("[事件] " + i[0] + " 时间范围无效");
+            else if (i[5] > i[6]) log.push("[事件] " + i[0] + " 总时长无效");
+            else if (i[6] && i[1] + i[2] > i[5] + i[6]) log.push("[事件] " + i[0] + " 总时长小于单次时长");
+            else if (!i[5]) {
+                i[9] = n.length;
+                n.push(i)
+            } else {
+                let u1, u2, u3;
+                r3: for (u1 = 1; u1 > 0; ++u1) {
+                    if (u1 * i[1] > i[6]) {
+                        log.push("[事件] " + i[0] + " 单次时长无法拆分为总时长");
+                        break
+                    } else for (u2 = 0; u2 <= u1 * (i[2] - i[1]); ++u2) {
+                        u3 = u1 * i[1] + u2;
+                        if (i[5] <= u3 && u3 <= i[6]) {
+                            i[9] = n.length;
+                            n.push(i);
+                            break r3
+                        }
+                    }
+                }
+            }
+        } else log.push("[事件] " + i[0] + " 因格式错误已忽略")
+    }
+    if (n.length) log.push("[事件] 共 " + n.length + " 发一般事件有效");
+    else log.push("[事件] 无有效事件");
+    for (let t = 0; t < 480; ++t) {
+        let p = [];
+        let e;
+        let z = 480 - t;
+        let l = false;
+        if (x > 99) {
+            log.push("[系统] 无法使用当前事件填满时间");
+            ret = [];
+            s = [];
+            break
+        }
+        for (i of r) {
+            if ("undefined" === typeof(k[i[9]])) k[i[9]] = rdm(i[5], i[6]);
+            d = t - k[i[9]];
+            if (d > i[4]) {
+                l = true;
+                break
+            } else if (i[3] <= d) {
+                l = true;
+                p.push(i);
+                break
+            }
+        }
+        if (!l) for (i of n) {
+            if (i[5]) if ("undefined" === typeof(s[i[9]])) s[i[9]] = 0;
+            else if (s[i[9]] + i[1] > i[6]) continue;
+            if (i[3] <= t && t <= i[4] && z - i[1] > 0) p.push(i)
+        }
+        if (!p.length) {
+            t = 0;
+            ret = [];
+            s = [];
+            k = [];
+            ++x;
+            continue
+        }
+        e = p[rdm(0, p.length - 1)];
+        w = rdm(e[1], e[2]);
+        if (w + t > 479) w = 479 - t;
+        if (w < e[1]) {
+            t = 0;
+            ret = [];
+            s = [];
+            k = [];
+            x = 0
+        }
+        if (l) k[e[9]] = t;
+        else if (e[5]) {
+            if (s[e[9]] + w > e[6]) w = e[6] - s[e[9]];
+            s[e[9]] += w
+        }
+        ret[t] = e[0] + " (持续" + w + "分钟）";
+        t += w;
+        if (t > 476) for (u = 0; u < s.length; ++u) if ("undefined" === typeof(s[u])) continue;
+        else if (n[u][5] > s[u] || s[u] > n[u][6]) {
+            t = 0;
+            ret = [];
+            s = [];
+            k = [];
+            x = 0
+        }
+    }
+    for (t = 0; t < 480; ++t) {
+        if ("undefined" !== typeof ret[t]) out.push(t + ": " + ret[t])
+    }
+    $("#log").value = log.join("\n");
+    $("#result").value = out.join("\n");
+    return
+});
+</script>
+</html>
